@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Decision Space</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .layout {
+            display: flex;
+            gap: 16px;
+            align-items: stretch;
+        }
+        #plot3d {
+            flex: 1;
+            height: 850px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            min-width: 0;
+        }
+        .legend-panel {
+            width: 380px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 18px 20px;
+            overflow-y: auto;
+            max-height: 850px;
+            box-sizing: border-box;
+        }
+        .legend-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #2C3E50;
+            margin-bottom: 14px;
+            text-align: center;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+        .legend-section { margin-bottom: 14px; }
+        .legend-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            margin-bottom: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 4px 0;
+            font-size: 12.5px;
+            color: #2C3E50;
+            line-height: 1.35;
+        }
+        .legend-box {
+            width: 28px;
+            height: 16px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            box-sizing: border-box;
+        }
+        .legend-box.dotted { border-style: dotted; border-width: 3.5px; }
+        .legend-box.solid  { border-style: solid;  border-width: 2.5px; }
+        .legend-dot {
+            width: 17px;
+            height: 17px;
+            border-radius: 50%;
+            border: 1.5px solid #000;
+            flex-shrink: 0;
+        }
+        .legend-divider {
+            height: 1px;
+            background: #bdc3c7;
+            margin: 12px 0;
+        }
+        .legend-mono {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            color: #2C3E50;
+            line-height: 1.6;
+            padding-left: 2px;
+        }
+        .legend-mono .row { display: flex; justify-content: space-between; }
+        .legend-mono .k { color: #566573; }
+        .legend-mono .v { color: #1a252f; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <div class="layout">
+        <div id="plot3d"></div>
+        <div class="legend-panel" id="legendPanel"></div>
+    </div>
+
+    <script>
+        // ============================================================
+        // 1. District data  —  PCA scores updated from pca.xlsx
+        // ============================================================
+        const districts = [
+            {id: 1,  eff: 0.539, bur: 0.187, pca: -0.140733},
+            {id: 2,  eff: 0.517, bur: 0.545, pca: -0.5966975},
+            {id: 3,  eff: 0.535, bur: 0.082, pca:  0.0340745},
+            {id: 4,  eff: 0.392, bur: 0.513, pca: -1.140799},
+            {id: 5,  eff: 0.414, bur: 0.356, pca: -0.4914825},
+            {id: 6,  eff: 0.415, bur: 0.288, pca: -0.211663},
+            {id: 7,  eff: 0.600, bur: 0.209, pca:  0.2543475},
+            {id: 8,  eff: 0.973, bur: 0.061, pca:  0.691442},
+            {id: 9,  eff: 0.568, bur: 0.138, pca:  0.273507},
+            {id: 10, eff: 0.999, bur: 0.244, pca:  0.8137095},
+            {id: 11, eff: 0.825, bur: 0.161, pca:  0.4760405},
+            {id: 12, eff: 0.719, bur: 0.276, pca:  0.035562},
+            {id: 13, eff: 0.777, bur: 0.160, pca:  0.3397855},
+            {id: 14, eff: 0.952, bur: 0.178, pca:  0.476455},
+            {id: 15, eff: 0.478, bur: 0.414, pca: -0.8145765},
+            {id: 16, eff: 0.849, bur: 0.194, pca:  0.645254},
+            {id: 17, eff: 0.960, bur: 0.087, pca:  0.5990395},
+            {id: 18, eff: 0.484, bur: 0.154, pca: -0.5071655},
+            {id: 19, eff: 0.359, bur: 0.221, pca: -0.88536},
+            {id: 20, eff: 0.443, bur: 0.092, pca: -0.494528},
+            {id: 21, eff: 0.512, bur: 0.114, pca: -0.177367},
+            {id: 22, eff: 1.000, bur: 0.000, pca:  0.82117}
+        ];
+
+        // ============================================================
+        // 2. Statistics helpers
+        // ============================================================
+        const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+
+        function quantile(arr, q) {
+            const sorted = [...arr].sort((a, b) => a - b);
+            const pos = (sorted.length - 1) * q;
+            const base = Math.floor(pos);
+            const rest = pos - base;
+            if (sorted[base + 1] !== undefined) {
+                return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+            }
+            return sorted[base];
+        }
+
+        const effs = districts.map(d => d.eff);
+        const burs = districts.map(d => d.bur);
+        const pcas = districts.map(d => d.pca);
+
+        const m = {
+            eff: mean(effs),
+            bur: mean(burs),
+            pca: mean(pcas)
+        };
+
+        const q = {
+            eff_low:  quantile(effs, 0.3),
+            eff_high: quantile(effs, 0.7),
+            bur_low:  quantile(burs, 0.3),
+            bur_high: quantile(burs, 0.7),
+            pca_low:  quantile(pcas, 0.3),
+            pca_high: quantile(pcas, 0.7)
+        };
+
+        // ============================================================
+        // 3. Axis ranges
+        // ============================================================
+        const xMin = Math.min(...pcas) - 0.1;
+        const xMax = Math.max(...pcas) + 0.1;
+        const yMin = Math.min(...burs) - 0.02;
+        const yMax = Math.max(...burs) + 0.02;
+        const zMin = Math.min(...effs) - 0.05;
+        const zMax = Math.max(...effs) + 0.05;
+
+        // ============================================================
+        // 4. Classification
+        // ============================================================
+        districts.forEach(d => {
+            const pca_h = d.pca > m.pca;
+            const eff_h = d.eff > m.eff;
+            const bur_h = d.bur > m.bur;
+
+            if (pca_h && !eff_h)                         d.group = 'Conflicting (PCA-High, Eff-Low)';
+            else if (!pca_h && eff_h)                    d.group = 'Conflicting (PCA-Low, Eff-High)';
+            else if (pca_h && eff_h && !bur_h)           d.group = 'Ideal';
+            else if (pca_h && eff_h && bur_h)            d.group = 'Complex';
+            else if (!pca_h && !eff_h && bur_h)          d.group = 'Critical';
+            else if (!pca_h && !eff_h && !bur_h)         d.group = 'Single-Dimensional';
+            else                                         d.group = 'Other';
+        });
+
+        const GROUP_ORDER = [
+            'Ideal',
+            'Complex',
+            'Critical',
+            'Single-Dimensional',
+            'Conflicting (PCA-High, Eff-Low)',
+            'Conflicting (PCA-Low, Eff-High)'
+        ];
+
+        const GROUP_COLORS = {
+            'Ideal':                            '#27AE60',
+            'Complex':                          '#F1C40F',
+            'Critical':                         '#C0392B',
+            'Single-Dimensional':               '#E67E22',
+            'Conflicting (PCA-High, Eff-Low)':  '#2980B9',
+            'Conflicting (PCA-Low, Eff-High)':  '#8E44AD'
+        };
+
+        // ============================================================
+        // 5. Box builder
+        // ============================================================
+        function createBox(x0, x1, y0, y1, z0, z1,
+                           fillColor, edgeColor,
+                           opacity, edgeDash, lineWidth) {
+            const corners = [
+                [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+                [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]
+            ];
+            const edges = [
+                [0,1],[1,2],[2,3],[3,0],
+                [4,5],[5,6],[6,7],[7,4],
+                [0,4],[1,5],[2,6],[3,7]
+            ];
+
+            const xLines = [], yLines = [], zLines = [];
+            edges.forEach(([a, b]) => {
+                xLines.push(corners[a][0], corners[b][0], null);
+                yLines.push(corners[a][1], corners[b][1], null);
+                zLines.push(corners[a][2], corners[b][2], null);
+            });
+
+            const faces = [
+                [0,1,2,3], [4,5,6,7],
+                [0,1,5,4], [1,2,6,5],
+                [2,3,7,6], [3,0,4,7]
+            ];
+            const fX = [], fY = [], fZ = [], fI = [], fJ = [], fK = [];
+            faces.forEach((face, fi) => {
+                face.forEach(i => {
+                    fX.push(corners[i][0]);
+                    fY.push(corners[i][1]);
+                    fZ.push(corners[i][2]);
+                });
+                const base = fi * 4;
+                fI.push(base, base);
+                fJ.push(base + 1, base + 2);
+                fK.push(base + 2, base + 3);
+            });
+
+            return [
+                {
+                    type: 'mesh3d',
+                    x: fX, y: fY, z: fZ,
+                    i: fI, j: fJ, k: fK,
+                    color: fillColor,
+                    opacity: opacity,
+                    hoverinfo: 'skip',
+                    showlegend: false,
+                    flatshading: true
+                },
+                {
+                    type: 'scatter3d',
+                    mode: 'lines',
+                    x: xLines, y: yLines, z: zLines,
+                    line: {
+                        color: edgeColor,
+                        width: lineWidth || 4,
+                        dash: edgeDash || 'solid'
+                    },
+                    hoverinfo: 'skip',
+                    showlegend: false
+                }
+            ];
+        }
+
+        // ============================================================
+        // 6. Build traces
+        // ============================================================
+        const traces = [];
+
+        GROUP_ORDER.forEach(group => {
+            const subset = districts.filter(d => d.group === group);
+            if (subset.length === 0) return;
+
+            traces.push({
+                type: 'scatter3d',
+                mode: 'markers+text',
+                x: subset.map(d => d.pca),
+                y: subset.map(d => d.bur),
+                z: subset.map(d => d.eff),
+                text: subset.map(d => `D${d.id}`),
+                textposition: 'top center',
+                textfont: { size: 10.5, color: '#2C3E50', family: 'Arial Black' },
+                marker: {
+                    size: 7,
+                    color: GROUP_COLORS[group],
+                    line: { color: 'black', width: 1.2 },
+                    opacity: 0.95
+                },
+                hovertemplate:
+                    '<b>District %{text}</b><br>' +
+                    'PCA: %{x:.3f}<br>' +
+                    'Burden: %{y:.3f}<br>' +
+                    'Efficiency: %{z:.3f}<br>' +
+                    '<extra></extra>',
+                showlegend: false
+            });
+        });
+
+        // --- Drop lines ---
+        traces.push({
+            type: 'scatter3d',
+            mode: 'lines',
+            x: districts.flatMap(d => [d.pca, d.pca, null]),
+            y: districts.flatMap(d => [d.bur, d.bur, null]),
+            z: districts.flatMap(d => [zMin, d.eff, null]),
+            line: { color: 'gray', width: 1.5, dash: 'dot' },
+            opacity: 0.4,
+            hoverinfo: 'skip',
+            showlegend: false
+        });
+
+        // ============================================================
+        // 7. FOUR BOXES
+        // ============================================================
+
+        // 🔴 Mean-based Critical (OUTER) — fine dotted
+        traces.push(...createBox(
+            xMin, m.pca,
+            m.bur, yMax,
+            zMin, m.eff,
+            '#FF6B6B', '#E74C3C',
+            0.08, 'dot', 3.5
+        ));
+
+        // 🟥 Quantile-based Critical (INNER) — solid thin
+        traces.push(...createBox(
+            xMin, q.pca_low,
+            q.bur_high, yMax,
+            zMin, q.eff_low,
+            '#8B0000', '#8B0000',
+            0.05, 'solid', 2.5
+        ));
+
+        // 🟢 Mean-based Advantageous (OUTER) — fine dotted
+        traces.push(...createBox(
+            m.pca, xMax,
+            yMin, m.bur,
+            m.eff, zMax,
+            '#6BCB77', '#27AE60',
+            0.08, 'dot', 3.5
+        ));
+
+        // 🟩 Quantile-based Advantageous (INNER) — solid thin
+        traces.push(...createBox(
+            q.pca_high, xMax,
+            yMin, q.bur_low,
+            q.eff_high, zMax,
+            '#006400', '#006400',
+            0.05, 'solid', 2.5
+        ));
+
+        // ============================================================
+        // 8. Layout — camera matched to matplotlib (elev=18, azim=40)
+        // ============================================================
+        const layout = {
+            title: {
+                text: '3D Decision Space: Efficiency × Burden × PCA',
+                font: { size: 18, family: 'Segoe UI', color: '#2C3E50' },
+                x: 0.5
+            },
+            scene: {
+                xaxis: {
+                    title: { text: 'PCA Score<br>(→ Low = Critical)', font: { size: 13, color: 'black' } },
+                    range: [xMin, xMax],
+                    gridcolor: 'rgba(150,150,150,0.4)',
+                    gridwidth: 1,
+                    showbackground: false,
+                    zerolinecolor: 'black',
+                    zerolinewidth: 2,
+                    linecolor: 'black',
+                    linewidth: 3,
+                    tickfont: { size: 11 }
+                },
+                yaxis: {
+                    title: { text: 'Burden<br>(→ High = Critical)', font: { size: 13, color: 'black' } },
+                    range: [yMin, yMax],
+                    gridcolor: 'rgba(150,150,150,0.4)',
+                    gridwidth: 1,
+                    showbackground: false,
+                    zerolinecolor: 'black',
+                    zerolinewidth: 2,
+                    linecolor: 'black',
+                    linewidth: 3,
+                    tickfont: { size: 11 }
+                },
+                zaxis: {
+                    title: { text: 'Efficiency Score<br>(→ Low = Critical)', font: { size: 13, color: 'black' } },
+                    range: [zMin, zMax],
+                    gridcolor: 'rgba(150,150,150,0.4)',
+                    gridwidth: 1,
+                    showbackground: false,
+                    zerolinecolor: 'black',
+                    zerolinewidth: 2,
+                    linecolor: 'black',
+                    linewidth: 3,
+                    tickfont: { size: 11 }
+                },
+                camera: {
+                    eye: { x: 1.60, y: 1.34, z: 0.68 },
+                    up: { x: 0, y: 0, z: 1 },
+                    center: { x: 0, y: 0, z: -0.05 }
+                },
+                aspectmode: 'manual',
+                aspectratio: { x: 1, y: 1, z: 0.85 }
+            },
+            paper_bgcolor: 'white',
+            margin: { l: 0, r: 0, b: 0, t: 80 },
+            showlegend: false
+        };
+
+        // ============================================================
+        // 9. Render
+        // ============================================================
+        Plotly.newPlot('plot3d', traces, layout, {
+            responsive: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['toImage', 'resetCameraLastSave3D']
+        });
+
+        // ============================================================
+        // 10. Legend panel
+        // ============================================================
+        const q_pct_low  = 30;
+        const q_pct_high = 70;
+        function fmt(v) { return v.toFixed(3); }
+
+        let html = '<div class="legend-title">Legend &amp; Thresholds</div>';
+
+        html += '<div class="legend-section">';
+        html += '<div class="legend-section-title">Zone Boxes</div>';
+        html += `<div class="legend-item">
+                    <div class="legend-box dotted"
+                         style="background: rgba(255,107,107,0.35);
+                                border-color:#E74C3C;"></div>
+                    Critical Zone (Mean · outer)
+                 </div>`;
+        html += `<div class="legend-item">
+                    <div class="legend-box solid"
+                         style="background: rgba(139,0,0,0.45);
+                                border-color:#8B0000;"></div>
+                    Critical Zone (Quantile · inner)
+                 </div>`;
+        html += `<div class="legend-item">
+                    <div class="legend-box dotted"
+                         style="background: rgba(107,203,119,0.35);
+                                border-color:#27AE60;"></div>
+                    Advantageous Zone (Mean · outer)
+                 </div>`;
+        html += `<div class="legend-item">
+                    <div class="legend-box solid"
+                         style="background: rgba(0,100,0,0.45);
+                                border-color:#006400;"></div>
+                    Advantageous Zone (Quantile · inner)
+                 </div>`;
+        html += '</div>';
+
+        html += '<div class="legend-section">';
+        html += '<div class="legend-section-title">Point Groups</div>';
+        GROUP_ORDER.forEach(g => {
+            const n = districts.filter(d => d.group === g).length;
+            if (n === 0) return;
+            html += `<div class="legend-item">
+                        <div class="legend-dot"
+                             style="background:${GROUP_COLORS[g]};"></div>
+                        ${g} &nbsp;<span style="color:#7f8c8d;">(n=${n})</span>
+                     </div>`;
+        });
+        html += '</div>';
+
+        html += '<div class="legend-divider"></div>';
+
+        html += '<div class="legend-section">';
+        html += '<div class="legend-section-title">Mean Thresholds</div>';
+        html += '<div class="legend-mono">';
+        html += `<div class="row"><span class="k">PCA</span><span class="v">${fmt(m.pca)}</span></div>`;
+        html += `<div class="row"><span class="k">Burden</span><span class="v">${fmt(m.bur)}</span></div>`;
+        html += `<div class="row"><span class="k">Efficiency</span><span class="v">${fmt(m.eff)}</span></div>`;
+        html += '</div></div>';
+
+        html += '<div class="legend-section">';
+        html += `<div class="legend-section-title">Quantile ${q_pct_low}% / ${q_pct_high}%</div>`;
+        html += '<div class="legend-mono">';
+        html += `<div class="row"><span class="k">PCA</span>
+                    <span class="v">${fmt(q.pca_low)} / ${fmt(q.pca_high)}</span></div>`;
+        html += `<div class="row"><span class="k">Burden</span>
+                    <span class="v">${fmt(q.bur_low)} / ${fmt(q.bur_high)}</span></div>`;
+        html += `<div class="row"><span class="k">Efficiency</span>
+                    <span class="v">${fmt(q.eff_low)} / ${fmt(q.eff_high)}</span></div>`;
+        html += '</div></div>';
+
+        document.getElementById('legendPanel').innerHTML = html;
+
+        // ============================================================
+        // 11. Console report
+        // ============================================================
+        console.log('='.repeat(70));
+        console.log('📊 Means:', m);
+        console.log('📊 Quantiles:', q);
+        console.log('📊 Group distribution:');
+        GROUP_ORDER.forEach(g => {
+            const subset = districts.filter(d => d.group === g);
+            if (subset.length === 0) return;
+            const ids = subset.map(d => `D${d.id}`).join(', ');
+            console.log(`   ${g} (n=${subset.length}): ${ids}`);
+        });
+        console.log('='.repeat(70));
+    </script>
+</body>
+</html>
