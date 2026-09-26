@@ -189,7 +189,7 @@
             else if (pca_h && eff_h && !bur_h)           d.group = 'Ideal';
             else if (pca_h && eff_h && bur_h)            d.group = 'Complex';
             else if (!pca_h && !eff_h && bur_h)          d.group = 'Critical';
-            else if (!pca_h && !eff_h && !bur_h)         d.group = 'Single-Dimensional';
+            else if (!pca_h && !eff_h && !bur_h)         d.group = 'Mild Weakness Profile';
             else                                         d.group = 'Other';
         });
 
@@ -197,7 +197,7 @@
             'Ideal',
             'Complex',
             'Critical',
-            'Single-Dimensional',
+            'Mild Weakness Profile',
             'Conflicting (PCA-High, Eff-Low)',
             'Conflicting (PCA-Low, Eff-High)'
         ];
@@ -206,7 +206,7 @@
             'Ideal':                            '#27AE60',
             'Complex':                          '#F1C40F',
             'Critical':                         '#C0392B',
-            'Single-Dimensional':               '#E67E22',
+            'Mild Weakness Profile':               '#E67E22',
             'Conflicting (PCA-High, Eff-Low)':  '#2980B9',
             'Conflicting (PCA-Low, Eff-High)':  '#8E44AD'
         };
